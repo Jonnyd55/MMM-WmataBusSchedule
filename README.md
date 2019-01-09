@@ -13,7 +13,27 @@ var config = {
         {
             module: 'MMM-WmataBusSchedule',
             config: {
-                // See below for configurable options
+                wmataId: 'XXX',
+                busStopId: 'xxxx',
+                busRoutes: ['7A', '7W'],
+                googleApi: 'xxxx',
+                schedule: {
+                    days: [1, 2, 3, 4, 5],
+                    times: {
+                        start: '07:30',
+                        stop: '09:30'
+                    }
+                },
+                places: {
+                    home: {
+                        lat: xxx,
+                        lon: xxx
+                    },
+                    destination: {
+                        lat: xxx,
+                        lon: xxx
+                    }
+                }
             }
         }
     ]
