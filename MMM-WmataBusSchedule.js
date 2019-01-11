@@ -21,7 +21,8 @@
 */
 Module.register('MMM-WmataBusSchedule', {
   defaults: {
-    updateInterval: 60000,
+    updateCommuteInterval: 60000,
+    updateStopInterval: 120000,
     retryDelay: 5000
   },
 
@@ -30,20 +31,28 @@ Module.register('MMM-WmataBusSchedule', {
   start: function() {
     //Flag for check if module is loaded
     this.loaded = false;
-    // Kick off the module
-    this.updateBusSchedule(this);
+    // Begin Commute calls
+    this.updateCommute(this);
+    // Begin Bus Stop calls
+    this.updateStopSchedule(this);
     // Setup empty Bus data
     this.nextBusData = {};
     // setup empty commute data
     this.commuteData = {};
   },
-
-  updateBusSchedule: function(self) {
+  updateCommute: function(self) {
     self.sendSocketNotification(
-      'MMM-WmataBusSchedule-FETCH_BUS_SCHEDULE',
+      'MMM-WmataBusSchedule-FETCH_COMMUTE',
       self.config
     );
-    setTimeout(self.updateBusSchedule, self.config.updateInterval, self);
+    setTimeout(self.updateCommute, self.config.updateCommuteInterval, self);
+  },
+  updateStopSchedule: function(self) {
+    self.sendSocketNotification(
+      'MMM-WmataBusSchedule-FETCH_STOP_SCHEDULE',
+      self.config
+    );
+    setTimeout(self.updateStopSchedule, self.config.updateStopInterval, self);
   },
   getDom: function() {
     var self = this;
@@ -61,28 +70,32 @@ Module.register('MMM-WmataBusSchedule', {
     wrapper.innerHTML = `Currently Loading schedules...`;
     return wrapper;
   },
-  processBusData: function(data) {
-    this.nextBusData = data;
+  processBusData: function(response) {
+    this.nextBusData = response.data;
   },
-  processCommuteData: function(data) {
-    this.commuteData = data;
+  processCommuteData: function(response) {
+    this.commuteData[response.name] = response.data;
+  },
+  processStopData: function(response) {
+    this.stopSchedule = response;
+    console.log(`STOP SZCHEDULE: ${JSON.stringify(this.stopSchedule)}`);
   },
   // socketNotificationReceived from helper
   socketNotificationReceived: function(notification, payload) {
     const self = this;
-    if (notification === 'MMM-WmataBusSchedule-NOTIFICATION_TEST') {
-      // set dataNotification
-      // this.dataNotification = payload;
-      // this.updateDom();
-    }
-
     if (notification === 'MMM-WmataBusSchedule-COMMUTE_DATA') {
-      payload.forEach(res => {
-        if (res.success) {
-          self[res.processor](res.data);
+      payload.forEach(response => {
+        if (response.success) {
+          // The value of processor set in the response determines which processor to call
+          self[response.processor](response);
         }
       });
 
+      this.updateDom();
+    }
+
+    if (notification === 'MMM-WmataBusSchedule-BUS_STOP_DATA') {
+      this.processStopData(payload);
       this.updateDom();
     }
   }
