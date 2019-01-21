@@ -3,30 +3,23 @@
 /* Magic Mirror
  * Module: MMM-WmataBusSchedule
  *
- * By
+ * By Jon Davenport
  * MIT Licensed.
  */
 
-/*
- SOME NOTES:
- 1. I need to send teh request to wmata once a minute, but only to
- * google maps once every 5 minutes.
- 2. I only need to do this betwen the hours of 7:15 and 9 a.m. every
- Monday - Friday - then stop over the weekend.
- 3. You can set a schedule in the config. Options should be
- Days ['Sun', 'Mon', 'Tue', 'Wed', 'Thu' , 'Fri', 'Sat']
- Schedule: { start: '', stop: ''}
- *
-
-*/
 Module.register('MMM-WmataBusSchedule', {
   defaults: {
     updateCommuteInterval: 60000,
     updateStopInterval: 120000,
     retryDelay: 5000
   },
-
   requiresVersion: '2.1.0', // Required version of MagicMirror
+  getStyles: function() {
+    return ['MMM-WmataBusSchedule.css'];
+  },
+  getScripts: function() {
+    return ['moment.js'];
+  },
 
   start: function() {
     //Flag for check if module is loaded
@@ -39,6 +32,8 @@ Module.register('MMM-WmataBusSchedule', {
     this.nextBusData = {};
     // setup empty commute data
     this.commuteData = {};
+    // Undefined commute object
+    this.nextBusTime = undefined;
   },
   updateCommute: function(self) {
     self.sendSocketNotification(
@@ -55,30 +50,111 @@ Module.register('MMM-WmataBusSchedule', {
     setTimeout(self.updateStopSchedule, self.config.updateStopInterval, self);
   },
   getDom: function() {
-    var self = this;
-    if (self.nextBusData) {
-      console.log(`Dom reloaded, next bus data: ${this.nextBusData}`);
+    const self = this;
+
+    let wrapper = document.createElement('div');
+    wrapper.id = 'wmata-bus-schedule';
+
+    let schedTable = document.createElement('table');
+    schedTable.className = 'schedule';
+    let header = document.createElement('tr');
+    let hedCell = document.createElement('th');
+    hedCell.colSpan = '2';
+    hedCell.innerText = 'Next Bus';
+    header.appendChild(hedCell);
+    schedTable.appendChild(header);
+
+    if (this.nextBusTime) {
+      let nextScheduledBusRow = document.createElement('tr');
+      nextScheduledBusRow.className = 'bright';
+
+      let SchedTitleCol = document.createElement('td');
+      SchedTitleCol.innerHTML = 'Scheduled';
+      nextScheduledBusRow.appendChild(SchedTitleCol);
+
+      let schedDataCol = document.createElement('td');
+      schedDataCol.className = 'data-col';
+      schedDataCol.innerHTML = `${this.nextBusTime.format('h:mm a')}`;
+      nextScheduledBusRow.appendChild(schedDataCol);
+
+      schedTable.appendChild(nextScheduledBusRow);
     }
 
-    if (self.commuteData) {
-      console.log(`Dom reloaded, commuter data: ${this.commuteData}`);
+    if (this.nextBusPrediction) {
+      let predictionBusRow = document.createElement('tr');
+      predictionBusRow.className = 'bright';
+
+      let predictionTitleCol = document.createElement('td');
+      predictionTitleCol.innerHTML = `Predicted (${
+        this.nextBusPrediction.RouteID
+      })`;
+      predictionBusRow.appendChild(predictionTitleCol);
+
+      let predictionDataCol = document.createElement('td');
+      predictionDataCol.className = 'data-col';
+      predictionDataCol.innerHTML = `${this.nextBusPrediction.Minutes} mins`;
+      predictionBusRow.appendChild(predictionDataCol);
+
+      schedTable.appendChild(predictionBusRow);
     }
 
-    // create element wrapper for show into the module
-    var wrapper = document.createElement('div');
-    wrapper.id = 'wmata-bus';
-    wrapper.innerHTML = `Currently Loading schedules...`;
+    // Handle Commute data
+    let commutes = Object.keys(self.commuteData);
+    if (commutes.length) {
+      let commuteRow = document.createElement('tr');
+      let commuteCol = document.createElement('th');
+      commuteCol.className = 'commute-header';
+      commuteCol.colSpan = '2';
+      commuteCol.innerText = 'Commute time';
+      commuteRow.appendChild(commuteCol);
+      schedTable.appendChild(commuteRow);
+
+      for (commute in self.commuteData) {
+        let time =
+          self.commuteData[commute]['routes'][0]['legs'][0]['duration']['text'];
+
+        let destinationRow = document.createElement('tr');
+        destinationRow.className = 'bright commute-row';
+        let commTitleCol = document.createElement('td');
+        commTitleCol.innerHTML = `${commute}`;
+        destinationRow.appendChild(commTitleCol);
+
+        let commDataCol = document.createElement('td');
+        commDataCol.className = 'data-col';
+        commDataCol.innerHTML = `${time}`;
+        destinationRow.appendChild(commDataCol);
+
+        schedTable.appendChild(destinationRow);
+      }
+    }
+
+    wrapper.appendChild(schedTable);
     return wrapper;
   },
-  processBusData: function(response) {
-    this.nextBusData = response.data;
+  processBusPredictorData: function(response) {
+    if (response.data['Predictions'].length) {
+      this.nextBusPrediction = response.data['Predictions'][0];
+    }
   },
   processCommuteData: function(response) {
     this.commuteData[response.name] = response.data;
   },
-  processStopData: function(response) {
-    this.stopSchedule = response;
-    console.log(`STOP SZCHEDULE: ${JSON.stringify(this.stopSchedule)}`);
+  updateNextBus: function() {
+    const self = this;
+    if (self.busSchedule) {
+      let now = moment();
+      let nextBus;
+      for (let i = 0; i < self.busSchedule.length; i++) {
+        nextBus = moment(
+          self.busSchedule[i]['ScheduleTime'],
+          'YYYY-MM-DDTHH:mm:ss'
+        );
+        if (nextBus > now) {
+          break;
+        }
+      }
+      self.nextBusTime = nextBus;
+    }
   },
   // socketNotificationReceived from helper
   socketNotificationReceived: function(notification, payload) {
@@ -86,16 +162,18 @@ Module.register('MMM-WmataBusSchedule', {
     if (notification === 'MMM-WmataBusSchedule-COMMUTE_DATA') {
       payload.forEach(response => {
         if (response.success) {
-          // The value of processor set in the response determines which processor to call
+          // The value of processor set in the response determines
+          // which processor to call
           self[response.processor](response);
         }
       });
-
+      this.updateNextBus();
       this.updateDom();
     }
 
     if (notification === 'MMM-WmataBusSchedule-BUS_STOP_DATA') {
-      this.processStopData(payload);
+      this.busSchedule = payload.data.ScheduleArrivals;
+      this.updateNextBus();
       this.updateDom();
     }
   }
