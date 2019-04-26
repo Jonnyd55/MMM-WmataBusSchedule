@@ -22,7 +22,7 @@ Module.register('MMM-WmataBusSchedule', {
   },
 
   start: function() {
-    //Flag for check if module is loaded
+    // lag for check if module is loaded
     this.loaded = false;
     // Begin Commute calls
     this.updateCommute(this);
@@ -34,6 +34,8 @@ Module.register('MMM-WmataBusSchedule', {
     this.commuteData = {};
     // Undefined commute object
     this.nextBusTime = undefined;
+    // Flag to tear down DOM
+    this.tearDown = false;
   },
   updateCommute: function(self) {
     self.sendSocketNotification(
@@ -51,95 +53,107 @@ Module.register('MMM-WmataBusSchedule', {
   },
   getDom: function() {
     const self = this;
-
     let wrapper = document.createElement('div');
     wrapper.id = 'wmata-bus-schedule';
 
-    let schedTable = document.createElement('table');
-    schedTable.className = 'schedule';
-    let header = document.createElement('tr');
-    let hedCell = document.createElement('th');
-    hedCell.colSpan = '2';
-    hedCell.innerText = 'Next Bus';
-    header.appendChild(hedCell);
-    schedTable.appendChild(header);
+    if (this.tearDown) {
+      wrapper.innerHTML = '';
+    } else {
+      let schedTable = document.createElement('table');
+      schedTable.className = 'schedule';
 
-    if (this.nextBusTime) {
-      let nextScheduledBusRow = document.createElement('tr');
-      nextScheduledBusRow.className = 'bright';
-
-      let SchedTitleCol = document.createElement('td');
-      SchedTitleCol.innerHTML = 'Scheduled';
-      nextScheduledBusRow.appendChild(SchedTitleCol);
-
-      let schedDataCol = document.createElement('td');
-      schedDataCol.className = 'data-col';
-      schedDataCol.innerHTML = `${this.nextBusTime.format('h:mm a')}`;
-      nextScheduledBusRow.appendChild(schedDataCol);
-
-      schedTable.appendChild(nextScheduledBusRow);
-    }
-
-    if (this.nextBusPrediction) {
-      let predictionBusRow = document.createElement('tr');
-      predictionBusRow.className = 'bright';
-
-      let predictionTitleCol = document.createElement('td');
-      predictionTitleCol.innerHTML = `Predicted (${
-        this.nextBusPrediction.RouteID
-      })`;
-      predictionBusRow.appendChild(predictionTitleCol);
-
-      let predictionDataCol = document.createElement('td');
-      predictionDataCol.className = 'data-col';
-      predictionDataCol.innerHTML = `${this.nextBusPrediction.Minutes} mins`;
-      predictionBusRow.appendChild(predictionDataCol);
-
-      schedTable.appendChild(predictionBusRow);
-    }
-
-    // Handle Commute data
-    let commutes = Object.keys(self.commuteData);
-    if (commutes.length) {
-      let commuteRow = document.createElement('tr');
-      let commuteCol = document.createElement('th');
-      commuteCol.className = 'commute-header';
-      commuteCol.colSpan = '2';
-      commuteCol.innerText = 'Commute time';
-      commuteRow.appendChild(commuteCol);
-      schedTable.appendChild(commuteRow);
-
-      for (commute in self.commuteData) {
-        let time =
-          self.commuteData[commute]['routes'][0]['legs'][0]['duration']['text'];
-
-        let destinationRow = document.createElement('tr');
-        destinationRow.className = 'bright commute-row';
-        let commTitleCol = document.createElement('td');
-        commTitleCol.innerHTML = `${commute}`;
-        destinationRow.appendChild(commTitleCol);
-
-        let commDataCol = document.createElement('td');
-        commDataCol.className = 'data-col';
-        commDataCol.innerHTML = `${time}`;
-        destinationRow.appendChild(commDataCol);
-
-        schedTable.appendChild(destinationRow);
+      if (this.nextBusTime || this.nextBusPrediction) {
+        let header = document.createElement('tr');
+        let hedCell = document.createElement('th');
+        hedCell.colSpan = '2';
+        hedCell.innerText = 'Next Bus';
+        header.appendChild(hedCell);
+        schedTable.appendChild(header);
       }
+
+      if (this.nextBusTime) {
+        let nextScheduledBusRow = document.createElement('tr');
+        nextScheduledBusRow.className = 'bright';
+
+        let SchedTitleCol = document.createElement('td');
+        SchedTitleCol.innerHTML = 'Scheduled';
+        nextScheduledBusRow.appendChild(SchedTitleCol);
+
+        let schedDataCol = document.createElement('td');
+        schedDataCol.className = 'data-col';
+        schedDataCol.innerHTML = `${this.nextBusTime.format('h:mm a')}`;
+        nextScheduledBusRow.appendChild(schedDataCol);
+
+        schedTable.appendChild(nextScheduledBusRow);
+      }
+
+      if (this.nextBusPrediction) {
+        let predictionBusRow = document.createElement('tr');
+        predictionBusRow.className = 'bright';
+
+        let predictionTitleCol = document.createElement('td');
+        predictionTitleCol.innerHTML = `Predicted (${
+          this.nextBusPrediction.RouteID
+        })`;
+        predictionBusRow.appendChild(predictionTitleCol);
+
+        let predictionDataCol = document.createElement('td');
+        predictionDataCol.className = 'data-col';
+        predictionDataCol.innerHTML = `${this.nextBusPrediction.Minutes} mins`;
+        predictionBusRow.appendChild(predictionDataCol);
+
+        schedTable.appendChild(predictionBusRow);
+      }
+
+      // Handle Commute data
+      let commutes = Object.keys(self.commuteData);
+      if (commutes.length) {
+        let commuteRow = document.createElement('tr');
+        let commuteCol = document.createElement('th');
+        commuteCol.className = 'commute-header';
+        commuteCol.colSpan = '2';
+        commuteCol.innerText = 'Time to';
+        commuteRow.appendChild(commuteCol);
+        schedTable.appendChild(commuteRow);
+
+        for (commute in self.commuteData) {
+          let time =
+            self.commuteData[commute]['routes'][0]['legs'][0]['duration'][
+              'text'
+            ];
+
+          let destinationRow = document.createElement('tr');
+          destinationRow.className = 'bright commute-row';
+          let commTitleCol = document.createElement('td');
+          commTitleCol.innerHTML = `${commute}`;
+          destinationRow.appendChild(commTitleCol);
+
+          let commDataCol = document.createElement('td');
+          commDataCol.className = 'data-col';
+          commDataCol.innerHTML = `${time}`;
+          destinationRow.appendChild(commDataCol);
+
+          schedTable.appendChild(destinationRow);
+        }
+      }
+
+      wrapper.appendChild(schedTable);
     }
 
-    wrapper.appendChild(schedTable);
     return wrapper;
   },
   processBusPredictorData: function(response) {
+    this.tearDown = false;
     if (response.data['Predictions'].length) {
       this.nextBusPrediction = response.data['Predictions'][0];
     }
   },
   processCommuteData: function(response) {
+    this.tearDown = false;
     this.commuteData[response.name] = response.data;
   },
   updateNextBus: function() {
+    this.tearDown = false;
     const self = this;
     if (self.busSchedule) {
       let now = moment();
@@ -174,6 +188,12 @@ Module.register('MMM-WmataBusSchedule', {
     if (notification === 'MMM-WmataBusSchedule-BUS_STOP_DATA') {
       this.busSchedule = payload.data.ScheduleArrivals;
       this.updateNextBus();
+      this.updateDom();
+    }
+
+    if (notification == 'MMM-WmataBusSchedule-TEAR-DOWN-DOM') {
+      console.log('Tear down the DOM');
+      this.tearDown = true;
       this.updateDom();
     }
   }

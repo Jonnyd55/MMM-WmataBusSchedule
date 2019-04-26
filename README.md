@@ -14,13 +14,13 @@ var config = {
     {
       module: 'MMM-WmataBusSchedule',
       config: {
-        wmataId: 'XXX',
+        wmataApiKey: 'XXX',
         busStopId: 'xxxx',
-        googleApi: 'xxxx',
+        googleApiKey: 'xxxx',
         schedule: {
-          // The days you want the module to display and poll for information
+          // The days you want the module to display and poll for information, 0 == Sunday
           days: [1, 2, 3, 4, 5],
-          // A time range used to determine when to poll the APIs to update the module.
+          // A time range used to determine when to poll the APIs to update the module. Uses the 24 hour clock
           times: {
             start: '07:30',
             stop: '09:30'
@@ -51,5 +51,5 @@ var config = {
 
 | Option    | Description                                                                                                     |
 | --------- | --------------------------------------------------------------------------------------------------------------- |
-| `option1` | _Required_ DESCRIPTION HERE                                                                                     |
+| `wmataId` | _Required_ API                                                                                                  |
 | `option2` | _Optional_ DESCRIPTION HERE TOO <br><br>**Type:** `int`(milliseconds) <br>Default 60000 milliseconds (1 minute) |

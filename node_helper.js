@@ -47,7 +47,7 @@ module.exports = NodeHelper.create({
     const url = 'https://api.wmata.com/NextBusService.svc/json/jPredictions';
     const params = {
       StopID: config.busStopId,
-      api_key: config.wmataId
+      api_key: config.wmataApiKey
     };
     const axiosConfig = {
       method: 'get',
@@ -79,7 +79,7 @@ module.exports = NodeHelper.create({
     const url = 'https://api.wmata.com/Bus.svc/json/jStopSchedule';
     const params = {
       StopID: config.busStopId,
-      api_key: config.wmataId
+      api_key: config.wmataApiKey
     };
     const axiosConfig = {
       method: 'get',
@@ -103,18 +103,18 @@ module.exports = NodeHelper.create({
   },
   fetchTimeToWork: async function(config, destination) {
     /*
-		  Usage: Hit the Google API to get the next bus
+		  Usage: Hit the Google API to get commute time
 		  Params:
         ::config:: the config object set in the main MM config.js file.
-        ::end:: The destination for this specific request.
+        ::destination:: The destination for this specific request.
 		  Returns: Response object from Google directions API
 		*/
     const url = 'https://maps.googleapis.com/maps/api/directions/json';
     const params = {
       origin: `${config.places.home.lat},${config.places.home.lon}`,
       destination: `${destination.lat},${destination.lon}`,
-      key: config.googleApi,
-      mode: 'transit'
+      key: config.googleApiKey,
+      mode: 'transit' // The commute time is transit using public transportation
     };
     const axiosConfig = {
       method: 'get',
@@ -126,7 +126,7 @@ module.exports = NodeHelper.create({
     if (commuteResponse.status == 200) {
       return {
         data: commuteResponse.data,
-        name: end.name, // Bring the name of the destination for display
+        name: destination.name, // Bring the name of the destination for display
         processor: 'processCommuteData',
         success: true
       };
@@ -144,34 +144,46 @@ module.exports = NodeHelper.create({
     */
 
     const self = this;
-    if (notification === 'MMM-WmataBusSchedule-FETCH_STOP_SCHEDULE') {
-      // Update the bust stop info
-      const stopSchedule = await this.fetchStopSchedule(payload);
-      this.sendSocketNotification(
-        'MMM-WmataBusSchedule-BUS_STOP_DATA',
-        stopSchedule
-      );
-    }
+    const weShouldFetch = self.shouldWeFetchCommuteData(payload);
+    // We are only going to hit the APIs within the scheduled times. If not schedule is set, we will
+    // hit the APIs every minute
 
-    if (notification === 'MMM-WmataBusSchedule-FETCH_COMMUTE') {
-      const weShouldFetchCommuteData = this.shouldWeFetchCommuteData(payload);
-      if (weShouldFetchCommuteData) {
+    if (weShouldFetch) {
+      if (notification === 'MMM-WmataBusSchedule-FETCH_STOP_SCHEDULE') {
+        // Update the bust stop info
+        try {
+          const stopSchedule = await self.fetchStopSchedule(payload);
+          self.sendSocketNotification(
+            'MMM-WmataBusSchedule-BUS_STOP_DATA',
+            stopSchedule
+          );
+        } catch (err) {
+          console.log('Error firing requests to WMATA API!');
+          console.log(err);
+        }
+      }
+
+      if (notification === 'MMM-WmataBusSchedule-FETCH_COMMUTE') {
+        console.log('We are fetching bus schedule/commute data');
         /* 
-          We will load up an array of promises to be completed before we
-          process them and update the DOM.
-         */
+            We will load up an array of promises to be completed before we
+            process them and update the DOM.
+           */
         let requests = [self.fetchNextBus(payload)];
+
         const now = moment();
-        if (now.minute() % 5 === 0) {
+        if (now.minute() % 2 === 0) {
           /* 
-          Only fetch traffic info from google every 5 mins to avoid hitting the
-          API rate limits and charging $$$
-          */
+            Only fetch traffic info from google every 5 mins to avoid hitting the
+            API rate limits and charging $$$
+            */
           for (i = 0; i < payload.places.destinations.length; i++) {
             requests.push(
               self.fetchTimeToWork(payload, payload.places.destinations[i])
             );
           }
+        } else {
+          console.log('We are not fetching the COmmute right now.');
         }
 
         try {
@@ -184,9 +196,10 @@ module.exports = NodeHelper.create({
           console.log('Error firing requests to Google/WMATA APIs!');
           console.log(err);
         }
-      } else {
-        console.log('We are not fetching - maybe we should do something else?');
       }
+    } else {
+      // Tear down what is there.
+      self.sendSocketNotification('MMM-WmataBusSchedule-TEAR-DOWN-DOM');
     }
   }
 });
